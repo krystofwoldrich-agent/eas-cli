@@ -15272,6 +15272,14 @@ export type AppObserveCustomEventListQueryVariables = Exact<{
 
 export type AppObserveCustomEventListQuery = { __typename?: 'RootQuery', app: { __typename?: 'AppQuery', byId: { __typename?: 'App', id: string, observe: { __typename?: 'AppObserve', customEventList: { __typename?: 'AppObserveCustomEventListConnection', pageInfo: { __typename?: 'PageInfo', hasNextPage: boolean, hasPreviousPage: boolean, endCursor?: string | null }, edges: Array<{ __typename?: 'AppObserveCustomEventEdge', cursor: string, node: { __typename?: 'AppObserveCustomEvent', id: string, eventName: string, timestamp: any, sessionId?: string | null, severityNumber?: number | null, severityText?: string | null, appVersion: string, appBuildNumber: string, appUpdateId?: string | null, appEasBuildId?: string | null, deviceOs: string, deviceOsVersion: string, deviceModel: string, environment?: string | null, easClientId: string, countryCode?: string | null, properties: Array<{ __typename?: 'AppObserveEventProperty', key: string, value: string, type: AppObservePropertyType }> } }> } } } } };
 
+export type AppObserveEventByIdQueryVariables = Exact<{
+  appId: Scalars['String']['input'];
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type AppObserveEventByIdQuery = { __typename?: 'RootQuery', app: { __typename?: 'AppQuery', byId: { __typename?: 'App', id: string, observe: { __typename?: 'AppObserve', event?: { __typename?: 'AppObserveEvent', id: string, metricName: string, metricValue: number, timestamp: any, appVersion: string, appBuildNumber: string, appUpdateId?: string | null, deviceModel: string, deviceOs: string, deviceOsVersion: string, countryCode?: string | null, sessionId?: string | null, easClientId: string, customParams?: any | null, routeName?: string | null } | null, customEvent?: { __typename?: 'AppObserveCustomEvent', id: string, eventName: string, timestamp: any, sessionId?: string | null, severityNumber?: number | null, severityText?: string | null, appVersion: string, appBuildNumber: string, appUpdateId?: string | null, appEasBuildId?: string | null, deviceOs: string, deviceOsVersion: string, deviceModel: string, environment?: string | null, easClientId: string, countryCode?: string | null, properties: Array<{ __typename?: 'AppObserveEventProperty', key: string, value: string, type: AppObservePropertyType }> } | null } } } };
+
 export type AppObserveCustomEventNamesQueryVariables = Exact<{
   appId: Scalars['String']['input'];
   startTime: Scalars['DateTime']['input'];

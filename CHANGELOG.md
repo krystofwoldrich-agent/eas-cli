@@ -12,6 +12,7 @@ This is the log of notable changes to EAS CLI and related packages.
 
 - [build-tools] Cache CocoaPods dependencies between iOS builds. ([#4266](https://github.com/expo/eas-cli/pull/4266) by [@AbbanMustafa](https://github.com/AbbanMustafa))
 - [build-tools] Support `EAS_BUN_FILTER_WORKSPACE` to install only the selected workspace's dependencies with `bun install --filter`. ([#4292](https://github.com/expo/eas-cli/pull/4292) by [@konrad-armatys](https://github.com/konrad-armatys))
+- [eas-cli] Add `eas observe:event` to display a single Observe event (metric or log) by its ID. ([#4252](https://github.com/expo/eas-cli/pull/4252) by [@douglowder](https://github.com/douglowder))
 
 ### 🐛 Bug fixes
 
