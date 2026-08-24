@@ -134,4 +134,19 @@ describe(ObserveEvent, () => {
       /Subscription to EAS is required/
     );
   });
+
+  it('wraps an unexpected server error with an ID-specific message and preserves the request ID', async () => {
+    const serverError = new CombinedError({
+      graphQLErrors: [
+        new GraphQLError('unexpected server error', null, null, null, null, null, {
+          requestId: 'req-123',
+        }),
+      ],
+    });
+    mockEventByIdAsync.mockRejectedValue(serverError);
+
+    await expect(createCommand(['bad-id']).runAsync()).rejects.toThrow(
+      /Could not retrieve Observe event with ID "bad-id"[\s\S]*unexpected server error \(Request ID: req-123\)/
+    );
+  });
 });
