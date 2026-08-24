@@ -116,12 +116,22 @@ type AppObserveCustomEventListQueryVariables = {
   orderBy?: AppObserveCustomEventListOrderBy;
 };
 
-type AppObserveEventByIdQuery = {
+type AppObserveMetricEventByIdQuery = {
   app: {
     byId: {
       id: string;
       observe: {
         event: AppObserveEvent | null;
+      };
+    };
+  };
+};
+
+type AppObserveCustomEventByIdQuery = {
+  app: {
+    byId: {
+      id: string;
+      observe: {
         customEvent: AppObserveCustomEvent | null;
       };
     };
@@ -390,15 +400,15 @@ export const ObserveQuery = {
     };
   },
 
-  async eventByIdAsync(
+  async metricEventByIdAsync(
     graphqlClient: ExpoGraphqlClient,
     { appId, id }: AppObserveEventByIdQueryVariables
-  ): Promise<{ event: AppObserveEvent | null; customEvent: AppObserveCustomEvent | null }> {
+  ): Promise<AppObserveEvent | null> {
     const data = await withErrorHandlingAsync(
       graphqlClient
-        .query<AppObserveEventByIdQuery, AppObserveEventByIdQueryVariables>(
+        .query<AppObserveMetricEventByIdQuery, AppObserveEventByIdQueryVariables>(
           gql`
-            query AppObserveEventById($appId: String!, $id: ID!) {
+            query AppObserveMetricEventById($appId: String!, $id: ID!) {
               app {
                 byId(appId: $appId) {
                   id
@@ -407,6 +417,33 @@ export const ObserveQuery = {
                       id
                       ...AppObserveEventFragment
                     }
+                  }
+                }
+              }
+            }
+            ${print(AppObserveEventFragmentNode)}
+          `,
+          { appId, id }
+        )
+        .toPromise()
+    );
+
+    return data.app.byId.observe.event ?? null;
+  },
+
+  async customEventByIdAsync(
+    graphqlClient: ExpoGraphqlClient,
+    { appId, id }: AppObserveEventByIdQueryVariables
+  ): Promise<AppObserveCustomEvent | null> {
+    const data = await withErrorHandlingAsync(
+      graphqlClient
+        .query<AppObserveCustomEventByIdQuery, AppObserveEventByIdQueryVariables>(
+          gql`
+            query AppObserveCustomEventById($appId: String!, $id: ID!) {
+              app {
+                byId(appId: $appId) {
+                  id
+                  observe {
                     customEvent(id: $id) {
                       id
                       ...AppObserveCustomEventFragment
@@ -415,7 +452,6 @@ export const ObserveQuery = {
                 }
               }
             }
-            ${print(AppObserveEventFragmentNode)}
             ${print(AppObserveCustomEventFragmentNode)}
           `,
           { appId, id }
@@ -423,8 +459,7 @@ export const ObserveQuery = {
         .toPromise()
     );
 
-    const { event, customEvent } = data.app.byId.observe;
-    return { event: event ?? null, customEvent: customEvent ?? null };
+    return data.app.byId.observe.customEvent ?? null;
   },
 
   async customEventNamesAsync(

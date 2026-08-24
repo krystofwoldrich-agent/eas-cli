@@ -23,19 +23,26 @@ jest.mock('../../../observe/formatCustomEvents', () => ({
 }));
 jest.mock('../../../graphql/queries/ObserveQuery', () => ({
   ObserveQuery: {
-    eventByIdAsync: jest.fn(),
+    customEventByIdAsync: jest.fn(),
+    metricEventByIdAsync: jest.fn(),
   },
 }));
 jest.mock('../../../log');
 jest.mock('../../../utils/json');
 
-const mockEventByIdAsync = jest.mocked(ObserveQuery.eventByIdAsync);
+const mockCustomEventByIdAsync = jest.mocked(ObserveQuery.customEventByIdAsync);
+const mockMetricEventByIdAsync = jest.mocked(ObserveQuery.metricEventByIdAsync);
 const mockBuildObserveEventDetail = jest.mocked(buildObserveEventDetail);
 const mockBuildObserveEventJson = jest.mocked(buildObserveEventJson);
 const mockBuildObserveCustomEventDetail = jest.mocked(buildObserveCustomEventDetail);
 const mockBuildObserveCustomEventJson = jest.mocked(buildObserveCustomEventJson);
 const mockEnableJsonOutput = jest.mocked(enableJsonOutput);
 const mockPrintJsonOnlyOutput = jest.mocked(printJsonOnlyOutput);
+
+// A custom (log) event ID is a UUID; a metric event ID is base64url-encoded JSON.
+const UUID_ID = '123e4567-e89b-12d3-a456-426614174000';
+const BASE64_ID = 'eyJhIjoxfQ';
+const INVALID_ID = 'not a valid id';
 
 describe(ObserveEvent, () => {
   const graphqlClient = {} as any as ExpoGraphqlClient;
@@ -44,7 +51,8 @@ describe(ObserveEvent, () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockEventByIdAsync.mockResolvedValue({ event: null, customEvent: null });
+    mockCustomEventByIdAsync.mockResolvedValue(null);
+    mockMetricEventByIdAsync.mockResolvedValue(null);
   });
 
   function createCommand(argv: string[]): ObserveEvent {
@@ -70,39 +78,39 @@ describe(ObserveEvent, () => {
     });
   }
 
-  it('looks up the event by the provided id', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: { id: 'evt' } as any, customEvent: null });
-    await createCommand(['evt']).runAsync();
-    expect(mockEventByIdAsync).toHaveBeenCalledWith(graphqlClient, { appId: projectId, id: 'evt' });
-  });
-
-  it('renders a metric event when only a metric event resolves', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: { id: 'metric-1' } as any, customEvent: null });
-    await createCommand(['metric-1']).runAsync();
-    expect(mockBuildObserveEventDetail).toHaveBeenCalledTimes(1);
-    expect(mockBuildObserveCustomEventDetail).not.toHaveBeenCalled();
-  });
-
-  it('renders a log event when only a custom event resolves', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: null, customEvent: { id: 'log-1' } as any });
-    await createCommand(['log-1']).runAsync();
-    expect(mockBuildObserveCustomEventDetail).toHaveBeenCalledTimes(1);
-    expect(mockBuildObserveEventDetail).not.toHaveBeenCalled();
-  });
-
-  it('prefers the custom event when both resolve', async () => {
-    mockEventByIdAsync.mockResolvedValue({
-      event: { id: 'x' } as any,
-      customEvent: { id: 'x' } as any,
+  it('looks up a UUID id with the custom-event query only', async () => {
+    mockCustomEventByIdAsync.mockResolvedValue({ id: UUID_ID } as any);
+    await createCommand([UUID_ID]).runAsync();
+    expect(mockCustomEventByIdAsync).toHaveBeenCalledWith(graphqlClient, {
+      appId: projectId,
+      id: UUID_ID,
     });
-    await createCommand(['x']).runAsync();
+    expect(mockMetricEventByIdAsync).not.toHaveBeenCalled();
     expect(mockBuildObserveCustomEventDetail).toHaveBeenCalledTimes(1);
-    expect(mockBuildObserveEventDetail).not.toHaveBeenCalled();
+  });
+
+  it('looks up a base64 id with the metric-event query only', async () => {
+    mockMetricEventByIdAsync.mockResolvedValue({ id: BASE64_ID } as any);
+    await createCommand([BASE64_ID]).runAsync();
+    expect(mockMetricEventByIdAsync).toHaveBeenCalledWith(graphqlClient, {
+      appId: projectId,
+      id: BASE64_ID,
+    });
+    expect(mockCustomEventByIdAsync).not.toHaveBeenCalled();
+    expect(mockBuildObserveEventDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('errors immediately for an ID that is neither a UUID nor base64, without querying', async () => {
+    await expect(createCommand([INVALID_ID]).runAsync()).rejects.toThrow(
+      /is not a valid Observe event ID/
+    );
+    expect(mockCustomEventByIdAsync).not.toHaveBeenCalled();
+    expect(mockMetricEventByIdAsync).not.toHaveBeenCalled();
   });
 
   it('emits typed JSON for a metric event with --json', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: { id: 'metric-1' } as any, customEvent: null });
-    await createCommand(['metric-1', '--json', '--non-interactive']).runAsync();
+    mockMetricEventByIdAsync.mockResolvedValue({ id: BASE64_ID } as any);
+    await createCommand([BASE64_ID, '--json', '--non-interactive']).runAsync();
     expect(mockEnableJsonOutput).toHaveBeenCalledTimes(1);
     expect(mockBuildObserveEventJson).toHaveBeenCalledTimes(1);
     expect(mockPrintJsonOnlyOutput).toHaveBeenCalledWith({
@@ -112,8 +120,8 @@ describe(ObserveEvent, () => {
   });
 
   it('emits typed JSON for a log event with --json', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: null, customEvent: { id: 'log-1' } as any });
-    await createCommand(['log-1', '--json', '--non-interactive']).runAsync();
+    mockCustomEventByIdAsync.mockResolvedValue({ id: UUID_ID } as any);
+    await createCommand([UUID_ID, '--json', '--non-interactive']).runAsync();
     expect(mockBuildObserveCustomEventJson).toHaveBeenCalledTimes(1);
     expect(mockPrintJsonOnlyOutput).toHaveBeenCalledWith({
       type: 'log',
@@ -121,16 +129,16 @@ describe(ObserveEvent, () => {
     });
   });
 
-  it('throws when no event resolves for the id', async () => {
-    mockEventByIdAsync.mockResolvedValue({ event: null, customEvent: null });
-    await expect(createCommand(['missing']).runAsync()).rejects.toThrow(
-      /No Observe event found with ID "missing"/
+  it('throws not-found when a well-formed ID resolves to nothing', async () => {
+    mockCustomEventByIdAsync.mockResolvedValue(null);
+    await expect(createCommand([UUID_ID]).runAsync()).rejects.toThrow(
+      new RegExp(`No Observe event found with ID "${UUID_ID}"`)
     );
   });
 
   it('surfaces the plan-gate message when the lookup is not available on the plan', async () => {
-    mockEventByIdAsync.mockRejectedValueOnce(planGateError());
-    await expect(createCommand(['evt']).runAsync()).rejects.toThrow(
+    mockCustomEventByIdAsync.mockRejectedValueOnce(planGateError());
+    await expect(createCommand([UUID_ID]).runAsync()).rejects.toThrow(
       /Subscription to EAS is required/
     );
   });
@@ -143,10 +151,12 @@ describe(ObserveEvent, () => {
         }),
       ],
     });
-    mockEventByIdAsync.mockRejectedValue(serverError);
+    mockCustomEventByIdAsync.mockRejectedValue(serverError);
 
-    await expect(createCommand(['bad-id']).runAsync()).rejects.toThrow(
-      /Could not retrieve Observe event with ID "bad-id"[\s\S]*unexpected server error \(Request ID: req-123\)/
+    await expect(createCommand([UUID_ID]).runAsync()).rejects.toThrow(
+      new RegExp(
+        `Could not retrieve Observe event with ID "${UUID_ID}"[\\s\\S]*unexpected server error \\(Request ID: req-123\\)`
+      )
     );
   });
 });

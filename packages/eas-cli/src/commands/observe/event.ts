@@ -1,4 +1,5 @@
 import { Args } from '@oclif/core';
+import { validate as isUuid } from 'uuid';
 
 import EasCommand from '../../commandUtils/EasCommand';
 import { EasCommandError } from '../../commandUtils/errors';
@@ -60,34 +61,18 @@ export default class ObserveEvent extends EasCommand {
       enableJsonOutput();
     }
 
-    // An event ID is either a metric-event ID or a custom (log) event ID, and
-    // their formats don't overlap, so we look up both and use whichever the
-    // server resolves. Both are null when nothing matches.
-    let result: Awaited<ReturnType<typeof ObserveQuery.eventByIdAsync>>;
-    try {
-      result = await withObservePlanGateHandlingAsync(() =>
-        ObserveQuery.eventByIdAsync(graphqlClient, { appId: projectId, id: args.id })
+    const id = args.id;
+
+    // A custom (log) event ID is a UUID; a metric event ID is base64url-encoded
+    // JSON. Route to the matching query so we never issue the query that is
+    // guaranteed to fail for this ID, and reject anything that is neither up front.
+    if (isUuid(id)) {
+      const customEvent = await fetchObserveEventAsync(id, () =>
+        ObserveQuery.customEventByIdAsync(graphqlClient, { appId: projectId, id })
       );
-    } catch (error) {
-      // Plan-gate rejections are already translated into a friendly upgrade
-      // message; surface those unchanged. Everything else — most commonly a
-      // server error for an unknown or malformed ID, which reaches the user as
-      // an opaque "unexpected server error" — becomes an actionable message
-      // that still preserves the underlying server error for support.
-      if (error instanceof EasCommandError) {
-        throw error;
+      if (!customEvent) {
+        throw eventNotFoundError(id);
       }
-      throw new EasCommandError(
-        `Could not retrieve Observe event with ID "${args.id}". ` +
-          'The ID may be invalid or the event may not exist (events also age out of retention). ' +
-          'Verify it was copied in full from `eas observe:events` or `eas observe:session`.' +
-          `\n\n${describeObserveServerError(error)}`
-      );
-    }
-
-    const { event, customEvent } = result;
-
-    if (customEvent) {
       if (json) {
         printJsonOnlyOutput({ type: 'log', event: buildObserveCustomEventJson(customEvent) });
       } else {
@@ -97,7 +82,13 @@ export default class ObserveEvent extends EasCommand {
       return;
     }
 
-    if (event) {
+    if (parsesAsBase64(id)) {
+      const event = await fetchObserveEventAsync(id, () =>
+        ObserveQuery.metricEventByIdAsync(graphqlClient, { appId: projectId, id })
+      );
+      if (!event) {
+        throw eventNotFoundError(id);
+      }
       if (json) {
         printJsonOnlyOutput({ type: 'metric', event: buildObserveEventJson(event) });
       } else {
@@ -108,7 +99,46 @@ export default class ObserveEvent extends EasCommand {
     }
 
     throw new EasCommandError(
-      `No Observe event found with ID "${args.id}". IDs come from \`eas observe:events\` or \`eas observe:session\`, and events age out of retention.`
+      `"${id}" is not a valid Observe event ID. IDs come from \`eas observe:events\` or \`eas observe:session\`.`
+    );
+  }
+}
+
+/**
+ * A metric event ID is canonical base64url (of JSON). Round-tripping rejects
+ * strings that only coincidentally contain base64 characters, so a value that
+ * is neither a UUID nor this is treated as an invalid ID.
+ */
+function parsesAsBase64(id: string): boolean {
+  if (id.length === 0) {
+    return false;
+  }
+  return Buffer.from(id, 'base64url').toString('base64url') === id;
+}
+
+function eventNotFoundError(id: string): EasCommandError {
+  return new EasCommandError(
+    `No Observe event found with ID "${id}". IDs come from \`eas observe:events\` or \`eas observe:session\`, and events age out of retention.`
+  );
+}
+
+/**
+ * Runs an Observe event lookup, translating plan-gate rejections to their
+ * upgrade message and any other server error into an actionable message that
+ * preserves the underlying error and request ID for support.
+ */
+async function fetchObserveEventAsync<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await withObservePlanGateHandlingAsync(fn);
+  } catch (error) {
+    if (error instanceof EasCommandError) {
+      throw error;
+    }
+    throw new EasCommandError(
+      `Could not retrieve Observe event with ID "${id}". ` +
+        'The ID may be invalid or the event may not exist (events also age out of retention). ' +
+        'Verify it was copied in full from `eas observe:events` or `eas observe:session`.' +
+        `\n\n${describeObserveServerError(error)}`
     );
   }
 }
