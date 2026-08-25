@@ -21,12 +21,12 @@ import { resolveObserveCommandContextAsync } from '../../observe/resolveProjectC
 import { enableJsonOutput, printJsonOnlyOutput } from '../../utils/json';
 
 export default class ObserveEvent extends EasCommand {
-  static override description = 'display a single Observe event (metric or log) by its ID';
+  static override description =
+    'display a single Observe event (metric or log) by its ID. IDs are included in event data when the `--json` flag is passed to `eas observe:session`, `eas observe:metrics`, or `eas observe:events`.';
 
   static override args = {
     id: Args.string({
-      description:
-        'ID of the event to display (from `eas observe:events` or `eas observe:session`)',
+      description: 'ID of the event to display',
       required: true,
     }),
   };
